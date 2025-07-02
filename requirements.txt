@@ -6,3 +6,4 @@ requests
 supabase
 prefect==2.14.12
 griffe>=0.36.3
+pendulum==2.1.2
