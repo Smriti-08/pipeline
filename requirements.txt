@@ -4,6 +4,7 @@ plotly
 pandas
 requests
 supabase
-pendulum==2.1.2
 prefect==2.14.12
 griffe>=0.36.3
+pytz==2024.2
+# pendulum removed due to build errors + pytz conflict
