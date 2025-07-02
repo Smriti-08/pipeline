@@ -1,8 +1,8 @@
 Flask
 gunicorn
+plotly
 pandas
 requests
-plotly
 supabase
 prefect==2.14.12
 griffe>=0.36.3
