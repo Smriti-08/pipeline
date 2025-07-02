@@ -1,12 +1,8 @@
 Flask
 gunicorn
-requests
 pandas
+requests
 plotly
 supabase
-python-dotenv
-prefect==2.10.20
-dagster==1.4.10
-dagit==1.4.10
-dagster-webserver==1.4.10
+prefect==2.14.12
 griffe>=0.36.3
