@@ -1,3 +1,6 @@
+python_version=="3.11.*"
+pip==23.3.1
+setuptools==68.2.2
 Flask
 gunicorn
 requests
@@ -6,7 +9,6 @@ plotly
 supabase
 python-dotenv
 prefect==2.10.20
-airbyte-cdk==0.51.44
 dagster==1.10.21
 dagit==1.10.21
 dagster-webserver==1.10.21
