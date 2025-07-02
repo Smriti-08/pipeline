@@ -2,6 +2,7 @@ services:
   - type: web
     name: coingecko-etl
     env: python
-    buildCommand: ""
-    startCommand: python server.py
     plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn server:app
+    pythonVersion: 3.11.9
