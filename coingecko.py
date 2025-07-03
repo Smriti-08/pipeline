@@ -7,9 +7,6 @@ import webbrowser
 import pandas as pd
 from prefect import task, flow
 from supabase import create_client, Client
-from airbyte_cdk.sources import AbstractSource
-from airbyte_cdk.models import SyncMode
-from airbyte_cdk.sources.streams import Stream
 import requests
 import plotly.graph_objects as go
 
@@ -23,8 +20,8 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 logging.basicConfig(level=logging.INFO)
 
-# Airbyte-style Stream for CoinGecko
-class CoinGeckoTopTokensStream(Stream):
+# CoinGecko Stream (no Airbyte dependency)
+class CoinGeckoTopTokensStream:
     def __init__(self, api_key):
         self.api_key = api_key
 
@@ -34,7 +31,7 @@ class CoinGeckoTopTokensStream(Stream):
     def primary_key(self):
         return "symbol"
 
-    def read_records(self, sync_mode: SyncMode, **kwargs):
+    def read_records(self, **kwargs):
         logger.info("📡 Fetching data from CoinGecko API...")
         url = "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd"
         headers = {
@@ -72,18 +69,6 @@ class CoinGeckoTopTokensStream(Stream):
                 "volatility": ((high - low) * 100 / current_price) if current_price else None,
                 "fetched_at": now
             }
-
-# Airbyte-style Source
-class SourceCoinGecko(AbstractSource):
-    def check_connection(self, logger, config):
-        try:
-            requests.get("https://api.coingecko.com/api/v3/ping")
-            return True, None
-        except Exception as e:
-            return False, str(e)
-
-    def streams(self, config):
-        return [CoinGeckoTopTokensStream(config["api_key"])]
 
 # Plotly Chart
 @task
@@ -137,10 +122,10 @@ def plot_token_prices():
     logger.info(f"✅ Chart saved to {os.path.abspath(filepath)}")
 
 @task
-def run_airbyte_style_etl():
-    logger.info("🚀 Running Airbyte-style CoinGecko ETL")
+def run_etl():
+    logger.info("🚀 Running CoinGecko ETL")
     stream = CoinGeckoTopTokensStream(api_key="CG-ynabWh7ssewjefk1sDs8hf7g")
-    records = list(stream.read_records(sync_mode=SyncMode.full_refresh))
+    records = list(stream.read_records())
 
     if not records:
         logger.warning("⚠️ No records returned from API.")
@@ -153,9 +138,9 @@ def run_airbyte_style_etl():
     supabase.table("coingecko").insert(records).execute()
     logger.info(f"✅ Inserted {len(records)} records.")
 
-@flow(name="CoinGecko Airbyte-style Pipeline")
+@flow(name="CoinGecko Pipeline")
 def coingecko_pipeline_flow(deploy=True):
-    run_airbyte_style_etl()
+    run_etl()
     plot_token_prices()
 
     import shutil
