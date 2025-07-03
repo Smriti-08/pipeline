@@ -1,6 +1,6 @@
 from flask import Flask, redirect, send_from_directory, render_template_string
 from coingecko import coingecko_pipeline_flow
-import threading  # Import threading for background tasks
+import threading
 import os
 
 app = Flask(__name__)
@@ -16,14 +16,39 @@ def home():
 
 @app.route('/run', methods=["POST"])
 def run_etl():
-    # Run ETL in a background thread to avoid blocking the worker
+    # Start ETL in a background thread
     threading.Thread(target=coingecko_pipeline_flow, kwargs={'deploy': False}, daemon=True).start()
-    return redirect('/visualization')
+    return redirect('/processing')
+
+@app.route('/processing')
+def processing():
+    # Show a processing page and poll for visualization readiness
+    return render_template_string("""
+        <h2>Pipeline is running, please wait...</h2>
+        <div id="status">Checking for results...</div>
+        <script>
+        function checkReady() {
+            fetch('/visualization').then(resp => {
+                if (resp.status === 200) {
+                    window.location.href = '/visualization';
+                } else {
+                    setTimeout(checkReady, 3000);
+                }
+            });
+        }
+        checkReady();
+        </script>
+    """)
 
 @app.route('/visualization')
 def serve_chart():
-    return send_from_directory('public', 'index.html')
+    # Only serve if the file exists, else return 404
+    chart_path = os.path.join('public', 'index.html')
+    if os.path.exists(chart_path):
+        return send_from_directory('public', 'index.html')
+    else:
+        return "Visualization not ready. Please wait...", 404
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))  # 10000 is a safe default
+    port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
