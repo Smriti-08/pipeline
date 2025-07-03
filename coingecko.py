@@ -124,7 +124,7 @@ def plot_token_prices():
 @task
 def run_etl():
     logger.info("🚀 Running CoinGecko ETL")
-    stream = CoinGeckoTopTokensStream(api_key="CG-ynabWh7ssewjefk1sDs8hf7g")
+    stream = CoinGeckoTopTokensStream(api_key="CG-kVGe3MgN7C13rKD1pvdvArNS")
     records = list(stream.read_records())
 
     if not records:
