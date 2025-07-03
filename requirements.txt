@@ -2,7 +2,7 @@ Flask==2.3.3
 gunicorn==21.2.0
 requests==2.31.0
 plotly==5.22.0
-prefect==2.19.1
-supabase==1.2.0 
+prefect==2.14.20
+supabase==1.2.0
 cython>=3.0.6
 pandas>=2.2.2,<3.0.0
