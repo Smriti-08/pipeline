@@ -16,13 +16,12 @@ def home():
 
 @app.route('/run', methods=["POST"])
 def run_etl():
-    # Start ETL in a background thread
-    threading.Thread(target=coingecko_pipeline_flow, kwargs={'deploy': False}, daemon=True).start()
+    # Run pipeline in background
+    threading.Thread(target=coingecko_pipeline_flow, daemon=True).start()
     return redirect('/processing')
 
 @app.route('/processing')
 def processing():
-    # Show a processing page and poll for visualization readiness
     return render_template_string("""
         <h2>Pipeline is running, please wait...</h2>
         <div id="status">Checking for results...</div>
@@ -42,7 +41,6 @@ def processing():
 
 @app.route('/visualization')
 def serve_chart():
-    # Only serve if the file exists, else return 404
     chart_path = os.path.join('public', 'index.html')
     if os.path.exists(chart_path):
         return send_from_directory('public', 'index.html')
