@@ -6,3 +6,5 @@ prefect==2.14.20
 supabase==1.2.0
 cython>=3.0.6
 pandas>=2.2.2,<3.0.0
+griffe==0.34.5
+
