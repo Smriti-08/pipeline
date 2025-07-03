@@ -1,18 +1,15 @@
 from dotenv import load_dotenv
 load_dotenv()
-import subprocess
+
 import logging
 from datetime import datetime, timezone, timedelta
 import os
 import shutil
 
 import pandas as pd
+import requests
 from prefect import task, flow
 from supabase import create_client, Client
-from airbyte_cdk.sources import AbstractSource
-from airbyte_cdk.models import SyncMode
-from airbyte_cdk.sources.streams import Stream
-import requests
 import plotly.graph_objects as go
 
 # Supabase setup
@@ -25,69 +22,56 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 logging.basicConfig(level=logging.INFO)
 
-# Airbyte-style Stream for CoinGecko
-class CoinGeckoTopTokensStream(Stream):
-    def __init__(self, api_key):
-        self.api_key = api_key
+@task
+def fetch_and_store_data():
+    logger.info("📡 Fetching data from CoinGecko API...")
 
-    def name(self):
-        return "coingecko_top_tokens"
+    url = os.getenv("COINGECKO_API_URL")
+    api_key = os.getenv("COINGECKO_API_KEY")
+    headers = {
+        "accept": "application/json",
+        "x-cg-api-key": api_key
+    }
 
-    def primary_key(self):
-        return "symbol"
+    response = requests.get(url, headers=headers)
+    if response.status_code != 200:
+        raise Exception(f"❌ Error fetching data: {response.status_code} {response.text}")
 
-    def read_records(self, sync_mode: SyncMode, **kwargs):
-        logger.info("📡 Fetching data from CoinGecko API...")
-        url = os.getenv("COINGECKO_API_URL")
-        headers = {
-            "accept": "application/json",
-            "x-cg-api-key": self.api_key
-        }
+    data = response.json()
+    sorted_data = sorted(data, key=lambda x: x.get("market_cap", 0), reverse=True)
+    top_100 = sorted_data[:100]
+    now = datetime.now(timezone.utc).isoformat()
 
-        response = requests.get(url, headers=headers)
-        if response.status_code != 200:
-            raise Exception(f"❌ Error fetching data: {response.status_code} {response.text}")
+    records = []
+    for coin in top_100:
+        market_cap = coin.get("market_cap") or 0
+        volume = coin.get("total_volume") or 0
+        current_price = coin.get("current_price") or 1
+        high = coin.get("high_24h") or 0
+        low = coin.get("low_24h") or 0
 
-        data = response.json()
-        sorted_data = sorted(data, key=lambda x: x.get("market_cap", 0), reverse=True)
-        top_100 = sorted_data[:100]
-        now = datetime.now(timezone.utc).isoformat()
+        records.append({
+            "symbol": coin.get("symbol"),
+            "name": coin.get("name"),
+            "current_price": current_price,
+            "market_cap": market_cap,
+            "total_volume": volume,
+            "high_24h": high,
+            "low_24h": low,
+            "price_change_percentage_24h": coin.get("price_change_percentage_24h"),
+            "total_supply": coin.get("total_supply"),
+            "volume_marketcap_ratio": volume / market_cap if market_cap else None,
+            "volatility": ((high - low) * 100 / current_price) if current_price else None,
+            "fetched_at": now
+        })
 
-        for coin in top_100:
-            market_cap = coin.get("market_cap") or 0
-            volume = coin.get("total_volume") or 0
-            current_price = coin.get("current_price") or 1
-            high = coin.get("high_24h") or 0
-            low = coin.get("low_24h") or 0
+    logger.info("🗑️ Deleting existing records...")
+    supabase.table("coingecko").delete().neq("id", 0).execute()
 
-            yield {
-                "symbol": coin.get("symbol"),
-                "name": coin.get("name"),
-                "current_price": current_price,
-                "market_cap": market_cap,
-                "total_volume": volume,
-                "high_24h": high,
-                "low_24h": low,
-                "price_change_percentage_24h": coin.get("price_change_percentage_24h"),
-                "total_supply": coin.get("total_supply"),
-                "volume_marketcap_ratio": volume / market_cap if market_cap else None,
-                "volatility": ((high - low) * 100 / current_price) if current_price else None,
-                "fetched_at": now
-            }
+    logger.info("📤 Inserting new records to Supabase...")
+    supabase.table("coingecko").insert(records).execute()
+    logger.info(f"✅ Inserted {len(records)} records.")
 
-# Airbyte-style Source
-class SourceCoinGecko(AbstractSource):
-    def check_connection(self, logger, config):
-        try:
-            requests.get("https://api.coingecko.com/api/v3/ping")
-            return True, None
-        except Exception as e:
-            return False, str(e)
-
-    def streams(self, config):
-        return [CoinGeckoTopTokensStream(config["api_key"])]
-
-# Plotly Chart
 @task
 def plot_token_prices():
     logger.info("📊 Generating chart...")
@@ -138,26 +122,9 @@ def plot_token_prices():
     fig.write_html(filepath, auto_open=False)
     logger.info(f"✅ Chart saved to {os.path.abspath(filepath)}")
 
-@task
-def run_airbyte_style_etl():
-    logger.info("🚀 Running Airbyte-style CoinGecko ETL")
-    stream = CoinGeckoTopTokensStream(api_key=os.getenv("COINGECKO_API_KEY"))
-    records = list(stream.read_records(sync_mode=SyncMode.full_refresh))
-
-    if not records:
-        logger.warning("⚠️ No records returned from API.")
-        return
-
-    logger.info("🗑️ Deleting existing records...")
-    supabase.table("coingecko").delete().neq("id", 0).execute()
-
-    logger.info("📤 Inserting new records to Supabase...")
-    supabase.table("coingecko").insert(records).execute()
-    logger.info(f"✅ Inserted {len(records)} records.")
-
-@flow(name="CoinGecko Airbyte-style Pipeline")
+@flow(name="CoinGecko Simple Pipeline")
 def coingecko_pipeline_flow():
-    run_airbyte_style_etl()
+    fetch_and_store_data()
     plot_token_prices()
 
     try:
