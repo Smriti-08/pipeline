@@ -87,6 +87,10 @@ def plot_token_prices():
     df = df.sort_values(by="current_price", ascending=False)
     tokens = df["name"]
 
+    # Get the latest fetch timestamp
+    latest_timestamp = max(pd.to_datetime(df["fetched_at"]))
+    timestamp_str = latest_timestamp.strftime("%d %B %Y, %H:%M UTC")
+
     fig = go.Figure()
     fig.add_trace(go.Scatter(
         x=tokens,
@@ -110,12 +114,27 @@ def plot_token_prices():
     ))
 
     fig.update_layout(
-        title="Top 100 Tokens: Price and Volatility",
+        title={
+            "text": "Top 100 Tokens: Price and Volatility",
+            "x": 0.5,
+            "xanchor": "center"
+        },
         xaxis=dict(title="Token"),
         yaxis=dict(title="Price (USD)", type="log", side='left', showgrid=True),
         yaxis2=dict(title="Volatility%", overlaying="y", side="right", showgrid=False),
         legend=dict(x=1, y=1, xanchor='right', yanchor='top'),
-        template="plotly_white"
+        template="plotly_white",
+        margin=dict(b=100),
+        annotations=[
+            dict(
+                text=f"Last updated: {timestamp_str}",
+                showarrow=False,
+                xref="paper", yref="paper",
+                x=0.5, y=-0.25,
+                xanchor='center',
+                font=dict(size=12, color="gray")
+            )
+        ]
     )
 
     filepath = "token_price_chart.html"
