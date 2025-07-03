@@ -1,8 +1,9 @@
 Flask==2.3.3
 gunicorn==21.2.0
 requests==2.31.0
-pandas==2.2.2
 plotly==5.22.0
 prefect==2.19.1
 supabase==1.2.0
 airbyte-cdk==0.63.1  
+cython>=3.0.6
+pandas>=2.2.2,<3.0.0
