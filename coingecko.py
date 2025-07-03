@@ -1,18 +1,23 @@
+from dotenv import load_dotenv
+load_dotenv()
 import subprocess
 import logging
 from datetime import datetime, timezone, timedelta
 import os
-import webbrowser
+import shutil
 
 import pandas as pd
 from prefect import task, flow
 from supabase import create_client, Client
+from airbyte_cdk.sources import AbstractSource
+from airbyte_cdk.models import SyncMode
+from airbyte_cdk.sources.streams import Stream
 import requests
 import plotly.graph_objects as go
 
 # Supabase setup
-SUPABASE_URL = "https://pimjfpjuuxdphucisnno.supabase.co"
-SUPABASE_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBpbWpmcGp1dXhkcGh1Y2lzbm5vIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA2NzQ4OTksImV4cCI6MjA2NjI1MDg5OX0.UiIOEJEKxd0AA6fxAxWXfcVivsPHpK4_yztgll3pSEM"
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_API_KEY = os.getenv("SUPABASE_API_KEY")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_API_KEY)
 
 # Logging
@@ -20,8 +25,8 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 logging.basicConfig(level=logging.INFO)
 
-# CoinGecko Stream (no Airbyte dependency)
-class CoinGeckoTopTokensStream:
+# Airbyte-style Stream for CoinGecko
+class CoinGeckoTopTokensStream(Stream):
     def __init__(self, api_key):
         self.api_key = api_key
 
@@ -31,9 +36,9 @@ class CoinGeckoTopTokensStream:
     def primary_key(self):
         return "symbol"
 
-    def read_records(self, **kwargs):
+    def read_records(self, sync_mode: SyncMode, **kwargs):
         logger.info("📡 Fetching data from CoinGecko API...")
-        url = "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd"
+        url = os.getenv("COINGECKO_API_URL")
         headers = {
             "accept": "application/json",
             "x-cg-api-key": self.api_key
@@ -69,6 +74,18 @@ class CoinGeckoTopTokensStream:
                 "volatility": ((high - low) * 100 / current_price) if current_price else None,
                 "fetched_at": now
             }
+
+# Airbyte-style Source
+class SourceCoinGecko(AbstractSource):
+    def check_connection(self, logger, config):
+        try:
+            requests.get("https://api.coingecko.com/api/v3/ping")
+            return True, None
+        except Exception as e:
+            return False, str(e)
+
+    def streams(self, config):
+        return [CoinGeckoTopTokensStream(config["api_key"])]
 
 # Plotly Chart
 @task
@@ -118,14 +135,14 @@ def plot_token_prices():
     )
 
     filepath = "token_price_chart.html"
-    fig.write_html(filepath, auto_open=True)
+    fig.write_html(filepath, auto_open=False)
     logger.info(f"✅ Chart saved to {os.path.abspath(filepath)}")
 
 @task
-def run_etl():
-    logger.info("🚀 Running CoinGecko ETL")
-    stream = CoinGeckoTopTokensStream(api_key="CG-kVGe3MgN7C13rKD1pvdvArNS")
-    records = list(stream.read_records())
+def run_airbyte_style_etl():
+    logger.info("🚀 Running Airbyte-style CoinGecko ETL")
+    stream = CoinGeckoTopTokensStream(api_key=os.getenv("COINGECKO_API_KEY"))
+    records = list(stream.read_records(sync_mode=SyncMode.full_refresh))
 
     if not records:
         logger.warning("⚠️ No records returned from API.")
@@ -138,23 +155,17 @@ def run_etl():
     supabase.table("coingecko").insert(records).execute()
     logger.info(f"✅ Inserted {len(records)} records.")
 
-@flow(name="CoinGecko Pipeline")
-def coingecko_pipeline_flow(deploy=True):
-    run_etl()
+@flow(name="CoinGecko Airbyte-style Pipeline")
+def coingecko_pipeline_flow():
+    run_airbyte_style_etl()
     plot_token_prices()
 
-    import shutil
-    os.makedirs("public", exist_ok=True)
-    shutil.copy("token_price_chart.html", os.path.join("public", "index.html"))
-
-    if deploy:
-        try:
-            subprocess.run([r"C:\\Users\\Smriti\\AppData\\Roaming\\npm\\vercel.cmd", "--prod", "--yes"], check=True)
-            logger.info("✅ Deployed to Vercel.")
-        except Exception as e:
-            logger.error(f"❌ Deployment failed: {e}")
-    else:
-        logger.info("✅ Chart ready to serve via Flask.")
+    try:
+        os.makedirs("public", exist_ok=True)
+        shutil.copy("token_price_chart.html", os.path.join("public", "index.html"))
+        logger.info("✅ Chart copied to public/index.html for Render static hosting.")
+    except Exception as e:
+        logger.error(f"❌ Copy to public/ failed: {e}")
 
 if __name__ == "__main__":
     coingecko_pipeline_flow()
